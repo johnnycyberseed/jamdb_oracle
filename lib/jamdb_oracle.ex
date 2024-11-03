@@ -74,23 +74,38 @@ defmodule Jamdb.Oracle do
   defp stmt({:fetch, cursor, row_format, last_row}, _), do: {:fetch, cursor, row_format, last_row}
   defp stmt({:batch, sql, params}, _), do: {:batch, sql, params}
   defp stmt(sql, params), do: {sql, params}
-  
   @impl true
   def connect(opts) do
     host = opts[:hostname] |> Jamdb.Oracle.to_list
     port = opts[:port]
     timeout = opts[:timeout] || @timeout
     idle_interval = opts[:idle_interval] || @idle_interval
-    user = opts[:username] |> Jamdb.Oracle.to_list
+
+    # Parse the username and proxy_user from the :username option
+    {user, proxy_user} = parse_user(opts[:username])
+    user = user |> Jamdb.Oracle.to_list
     password = opts[:password] |> Jamdb.Oracle.to_list
     database = opts[:database] |> Jamdb.Oracle.to_list
     env = [host: host, port: port, user: user, password: password, timeout: timeout, idle_interval: idle_interval]
 	  ++ if( hd(database) == ?:, do: [sid: tl(database)], else: [service_name: database] )
+    env = if proxy_user, do: env ++ [proxy_user: proxy_user |> Jamdb.Oracle.to_list()], else: env
     params = opts[:parameters] || []
     sock_opts = opts[:socket_options] || []
     case :jamdb_oracle.start_link(sock_opts ++ params ++ env) do
       {:ok, pid} -> {:ok, %Jamdb.Oracle{pid: pid, mode: :idle, timeout: timeout, idle_interval: idle_interval}}
       {:error, err} -> {:error, error!(err)}
+    end
+  end
+
+    # Helper function to parse the username and proxy_user from the :username option
+  defp parse_user(username) when is_binary(username) do
+    case String.split(username, "[", parts: 2) do
+      [user, rest] ->
+        proxy_user = String.trim_trailing(rest, "]")
+        {user, proxy_user}
+
+      [user] ->
+        {user, nil}
     end
   end
 

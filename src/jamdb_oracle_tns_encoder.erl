@@ -66,7 +66,7 @@ encode_record(sess, #oraclient{env=EnvOpts,seq=Tseq}) ->
     Role            = proplists:get_value(role, EnvOpts, 0),
     Prelim          = proplists:get_value(prelim, EnvOpts, 0),
     AppName         = proplists:get_value(app_name, EnvOpts, "jamdb"),
-    User2 = encode_str(User),
+    User2           = encode_str(User),
     <<
     ?TTI_FUN,
     ?TTI_SESS, Tseq,
@@ -84,6 +84,7 @@ encode_record(sess, #oraclient{env=EnvOpts,seq=Tseq}) ->
     >>;
 encode_record(auth, #oraclient{env=EnvOpts,passwd=Passwd,req=Request,seq=Tseq}) ->
     User            = proplists:get_value(user, EnvOpts),
+    ProxyUser       = proplists:get_value(proxy_user, EnvOpts, undefined),
     Role            = proplists:get_value(role, EnvOpts, 0),
     Prelim          = proplists:get_value(prelim, EnvOpts, 0),
     Passwd ! {get, self()},
@@ -95,6 +96,8 @@ encode_record(auth, #oraclient{env=EnvOpts,passwd=Passwd,req=Request,seq=Tseq}) 
     jamdb_oracle_crypt:generate(Request#logon{user=binary_to_list(User2), password=Pass2, newpassword=NewPass2}),
     {PassMode, PassInd} = if AuthNewPass =/= [] -> {18, 1}; true -> {1, 0} end,
     KeyInd = if SpeedyKey =/= [] -> 1; true -> 0 end,
+    ProxyInd = if ProxyUser =/= undefined -> 1; true -> 0 end,
+    NumKeyVals = 4 + KeyInd + PassInd + ProxyInd,
     {<<
     ?TTI_FUN,
     ?TTI_AUTH, Tseq,
@@ -102,7 +105,7 @@ encode_record(auth, #oraclient{env=EnvOpts,passwd=Passwd,req=Request,seq=Tseq}) 
     (encode_sb2(byte_size(User2)))/binary,
     (encode_sb2((Role * 32) bor (Prelim * 128) bor PassMode bor 256))/binary,  %auth mode
     1,                                                                         %authivl
-    (encode_sb2(4 + KeyInd + PassInd))/binary,                                 %number of keyval pairs
+    (encode_sb2(NumKeyVals))/binary,                                           %number of keyval pairs
     1,1,                                                                       %authovl
     User2/binary,
     (encode_keyval("AUTH_PASSWORD", AuthPass))/binary,
@@ -110,7 +113,8 @@ encode_record(auth, #oraclient{env=EnvOpts,passwd=Passwd,req=Request,seq=Tseq}) 
     (if KeyInd =/= 0 -> encode_keyval("AUTH_PBKDF2_SPEEDY_KEY", SpeedyKey); true -> <<>> end)/binary,
     (encode_keyval(<<"AUTH_SESSKEY">>, AuthSess, 1))/binary,
     (encode_keyval("SESSION_CLIENT_DRIVER_NAME", "beam"))/binary,
-    (encode_keyval("SESSION_CLIENT_VERSION", "4"))/binary
+    (encode_keyval("SESSION_CLIENT_VERSION", "4"))/binary,
+    (if ProxyInd =/= 0 -> encode_keyval("PROXY_CLIENT_NAME", ProxyUser); true -> <<>> end)/binary
     >>,
     KeyConn};
 encode_record(dty, #oraclient{charset=Charset}) ->
