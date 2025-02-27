@@ -175,7 +175,7 @@ defmodule Jamdb.Oracle do
   def handle_rollback(opts, %{mode: mode} = s) do
     case Keyword.get(opts, :mode, :transaction) do
       :transaction when mode in [:transaction, :error] ->
-        statement = "ROLLBACK TO tran"
+        statement = "ROLLBACK"
         handle_transaction(statement, opts, %{s | mode: :idle})
       :savepoint when mode in [:transaction, :error] ->
         statement = "ROLLBACK TO " <> Keyword.get(opts, :name, "svpt")
